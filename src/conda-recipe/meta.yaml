@@ -1,0 +1,30 @@
+package:
+  name: h3-arcgis
+  version: "0.1.0"
+
+source:
+  path: ..
+
+build:
+  preserve_egg_dir: True
+  script: python setup.py install --single-version-externally-managed --record=record.txt
+
+requirements:
+  build:
+    - python>=3.6
+    - setuptools
+  run:
+    - arcgis>=1.7.0
+    - numpy
+    - pandas
+    - requests
+    - scikit-learn
+
+about:
+  home: https://github.com/knu2xs/h3-arcgis
+  license: Apache 2.0
+  license_file: LICENSE
+  summary: "Address business challenges using quantitative geographic and machine learning methods."
+  dev_url: https://github.com/knu2xs/h3-arcgis
+  doc_url: https://github.com/knu2xs/h3-arcgis/blob/master/README.md
+  doc_source_url: https://github.com/knu2xs/h3-arcgis/blob/master/README.md
