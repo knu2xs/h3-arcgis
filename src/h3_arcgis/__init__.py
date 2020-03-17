@@ -12,13 +12,12 @@ from h3 import h3
 import pandas as pd
 import swifter
 
-
 # what we're going to tell the world about
-__all__ = ['get_unique_h3_ids_for_aoi', 'get_esri_geometry_for_h3_id', 'get_esri_geometry_for_h3_id', 
+__all__ = ['get_unique_h3_ids_for_aoi', 'get_esri_geometry_for_h3_id', 'get_esri_geometry_for_h3_id',
            'get_h3_hex_dataframe_from_h3_id_lst', 'get_h3_hex_for_aoi', 'get_nonoverlapping_h3_hexbins_for_points']
 
 
-def _preprocess_sdf_for_h3(orig_df:pd.DataFrame)->pd.DataFrame:
+def _preprocess_sdf_for_h3(orig_df: pd.DataFrame) -> pd.DataFrame:
     """
     Since H3 cannot handle multipart geometries, break apart any potential multipart geometries into
     discrete rows for subsequent analysis.
@@ -41,11 +40,11 @@ def _preprocess_sdf_for_h3(orig_df:pd.DataFrame)->pd.DataFrame:
     # reset the index and get the geometry working
     new_df.reset_index(drop=True, inplace=True)
     new_df.spatial.set_geometry('SHAPE')
-    
+
     return new_df
 
 
-def get_unique_h3_ids_for_aoi(orig_df:pd.DataFrame, hex_level:int=9)->list:
+def get_unique_h3_ids_for_aoi(orig_df: pd.DataFrame, hex_level: int = 9) -> list:
     """
     Given an area of interest, create Uber H3 hexagons covering the area of interest.
     :param orig_df: Spatially enabled dataframe delineating the area of interest.
@@ -53,7 +52,7 @@ def get_unique_h3_ids_for_aoi(orig_df:pd.DataFrame, hex_level:int=9)->list:
     """
     # explode all the multipart geometric features into discrete geometric features
     expl_df = _preprocess_sdf_for_h3(orig_df)
-    
+
     # create a feature set of all the exploded features
     fs_expl = expl_df.spatial.to_featureset()
 
@@ -75,16 +74,16 @@ def get_unique_h3_ids_for_aoi(orig_df:pd.DataFrame, hex_level:int=9)->list:
 
     # combine all the id's and use a set to eliminate any duplicates
     h3_ids = set(chain.from_iterable(h3_ids_lst))
-    
+
     if len(h3_ids) == 0:
         raise Exception(f'The resolution provided, H3 level {hex_level}, is too coarse to return any results.'
-                       f' Please select a finer level of detail, say level {hex_level+1}, and see if that works '
+                        f' Please select a finer level of detail, say level {hex_level + 1}, and see if that works '
                         'any better.')
-    
+
     return list(h3_ids)
 
 
-def get_esri_geometry_for_h3_id(h3_id:str)->Polygon:
+def get_esri_geometry_for_h3_id(h3_id: str) -> Polygon:
     """
     Convert an Uber H3 id to an ArcGIS Python API Polygon Geometry object.
     :param h3_id:String Uber H3 id.
@@ -94,10 +93,10 @@ def get_esri_geometry_for_h3_id(h3_id:str)->Polygon:
     coord_lst = [h3.h3_to_geo_boundary(h3_id, geo_json=True)]
 
     # creat a geometry object using this geometry list
-    return Geometry({"type" : "Polygon", "coordinates": coord_lst, 'spatialReference': {'wkid': 4326}})
+    return Geometry({"type": "Polygon", "coordinates": coord_lst, 'spatialReference': {'wkid': 4326}})
 
 
-def get_h3_hex_dataframe_from_h3_id_lst(h3_id_lst:list)->pd.DataFrame:
+def get_h3_hex_dataframe_from_h3_id_lst(h3_id_lst: list) -> pd.DataFrame:
     """
     From a list of H3 id's, return a spatially enabled dataframe with all the geometries.
     :param h3_id_lst: STring list of H3 identifiers.
@@ -109,11 +108,11 @@ def get_h3_hex_dataframe_from_h3_id_lst(h3_id_lst:list)->pd.DataFrame:
     # zip together the hex id's and geometries into a dataframe, and spatially enable it
     df = pd.DataFrame(zip(h3_id_lst, geom_lst), columns=['h3_id', 'SHAPE'])
     df.spatial.set_geometry('SHAPE')
-    
+
     return df
 
-    
-def get_h3_hex_for_aoi(orig_df:pd.DataFrame, hex_level:int=9)->pd.DataFrame:
+
+def get_h3_hex_for_aoi(orig_df: pd.DataFrame, hex_level: int = 9) -> pd.DataFrame:
     """
     Given an area of interest, create Uber H3 hexagons covering the area of interest.
     :param orig_df: Spatially enabled dataframe delineating the area of interest.
@@ -123,6 +122,8 @@ def get_h3_hex_for_aoi(orig_df:pd.DataFrame, hex_level:int=9)->pd.DataFrame:
     df = get_h3_hex_dataframe_from_h3_id_lst(h3_ids)
     return df
 
+
+# AGGREGATION SECTION
 
 # consistent column names - may parameterize later, but this works for now...
 h3_id_col = 'h3_id'
@@ -140,9 +141,14 @@ def _get_h3_range_lst(h3_min, h3_max):
     return list(range(h3_min, h3_max + 1))
 
 
+def _get_h3_col_lst_from_df(df):
+    """Helper get H3 columns for dataframe."""
+    return [col for col in df.columns if col.startswith('h3_') and col[-2:].isnumeric()]
+
+
 def _get_h3_range_lst_from_df(df):
     """Helper to get H3 range list from column names."""
-    return [int(col[-2:]) for col in df.columns if col.startswith('h3_') and col[-2:].isnumeric()]
+    return [int(col[-2:]) for col in _get_h3_col_lst_from_df(df)]
 
 
 def add_h3_ids_to_points(df: pd.DataFrame, h3_max: int, h3_min: int) -> pd.DataFrame:
@@ -227,17 +233,30 @@ def remove_overlapping_h3_ids(df: pd.DataFrame) -> pd.DataFrame:
 
     # reverse the sorting so it goes from smallest area to largest
     for h3_lvl in h3_lvl_lst[:-1]:
-        # get the name of the column at the next zoom level
-        nxt_h3_lvl = h3_lvl - 1
-        nxt_h3_col = _h3_col(nxt_h3_lvl)
 
-        # create a filter to identify only the records where the next zoom level, the containing h3,
-        # is also being used
-        df_slice = df[nxt_h3_col].isin(h3_id_lst)
+        # variable storing the number of zoom levels to iterate up
+        zoom_range = h3_lvl - h3_lvl_lst[-1]
 
-        # if the hexbin id is present at a larger extent zoom level, inherit it
-        df.loc[df_slice, h3_id_col] = df[nxt_h3_col]
-        df.loc[df_slice, h3_lvl_col] = nxt_h3_lvl
+        # now, jump up the zoom levels to ensure checking to the top of the resolutions
+        for idx in range(0, zoom_range + 1):
+
+            # get the name of the column at the zoom level
+            nxt_h3_lvl = h3_lvl - idx
+            nxt_h3_col = _h3_col(nxt_h3_lvl)
+
+            # create a filter to identify only the records where the next zoom level, the containing h3,
+            # is also being used
+            df_slice = df[nxt_h3_col].isin(h3_id_lst)
+
+            # if nothing found, don't waste time with populating values
+            if len(df[df_slice].index):
+
+                # if the hexbin id is present at a larger extent zoom level, inherit it
+                df.loc[df_slice, h3_id_col] = df[nxt_h3_col]
+                df.loc[df_slice, h3_lvl_col] = nxt_h3_lvl
+
+            # decrement the zoom range
+            zoom_range = zoom_range - 1
 
     return df
 
