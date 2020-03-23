@@ -93,7 +93,8 @@ def get_esri_geometry_for_h3_id(h3_id: str) -> Polygon:
     coord_lst = [h3.h3_to_geo_boundary(h3_id, geo_json=True)]
 
     # creat a geometry object using this geometry list
-    return Geometry({"type": "Polygon", "coordinates": coord_lst, 'spatialReference': {'wkid': 4326}})
+    return Polygon({"type": "Polygon", "coordinates": coord_lst,
+                     'spatialReference': {'wkid': 4326, 'latestWkid': 4326}})
 
 
 def get_h3_hex_dataframe_from_h3_id_lst(h3_id_lst: list) -> pd.DataFrame:
@@ -177,12 +178,16 @@ def add_h3_ids_to_points(df: pd.DataFrame, h3_max: int, h3_min: int) -> pd.DataF
     return df
 
 
-def get_h3_ids_by_point_count(df: pd.DataFrame, min_count: int) -> pd.DataFrame:
+def get_h3_ids_by_count(df: pd.DataFrame, min_count: int, count_column: str = None) -> pd.DataFrame:
     """Assign a H3 id to each point based on the H3 count in increasingly resolution H3 hexagons. If not enough present, the points
     for the summary tesselation cell will not be retained.
     :param df: Pandas DataFrame with properly formatted columns delineating the Uber H3 ids at varying resolutions.
-    :param min_count: The minimum count of points to consider for retaining the H3 id.
+    :param min_count: The minimum count to consider for retaining the H3 id.
+    :param count_column: Column containing the value summed to create a count for threshold evaluation.
     """
+    # provide default
+    count_column = 'count' if count_column is None else count_column
+
     # get the levels from the column names
     h3_lvl_lst = _get_h3_range_lst_from_df(df)
 
@@ -191,11 +196,17 @@ def get_h3_ids_by_point_count(df: pd.DataFrame, min_count: int) -> pd.DataFrame:
 
     # iterate the hex levels
     for h3_lvl in h3_lvl_lst:
+
         # create the hex column name string
         h3_col = _h3_col(h3_lvl)
 
-        # get the count of every hex id at this resolution
-        h3_id_cnt = df[h3_col].value_counts()
+        # if a count column is provided, use this for aggregation
+        if count_column == 'count':
+            h3_id_cnt = df[h3_col].value_counts()
+
+        # otherwise, just get a point count
+        else:
+            h3_id_cnt = df.groupby(h3_col).sum()[count_column]
 
         # if the count for the hex id is greater than the minimum, assign an id - critical for PII
         h3_id_lst = h3_id_cnt[h3_id_cnt > min_count].index.values
@@ -209,9 +220,6 @@ def get_h3_ids_by_point_count(df: pd.DataFrame, min_count: int) -> pd.DataFrame:
 
         # Note the hex level
         df.loc[df_slice, h3_lvl_orig_col] = h3_lvl
-
-    # drop values not meeting the threshold - this is the key step for protecting PII
-    df.dropna(subset=[h3_id_col, h3_lvl_col], inplace=True)
 
     return df
 
@@ -250,7 +258,6 @@ def remove_overlapping_h3_ids(df: pd.DataFrame) -> pd.DataFrame:
 
             # if nothing found, don't waste time with populating values
             if len(df[df_slice].index):
-
                 # if the hexbin id is present at a larger extent zoom level, inherit it
                 df.loc[df_slice, h3_id_col] = df[nxt_h3_col]
                 df.loc[df_slice, h3_lvl_col] = nxt_h3_lvl
@@ -261,15 +268,20 @@ def remove_overlapping_h3_ids(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def get_h3_hexbins_with_counts(df: pd.DataFrame, h3_id_col: str = 'h3_id') -> pd.DataFrame:
+def get_h3_hexbins_with_counts(df: pd.DataFrame, h3_id_col: str = 'h3_id',
+                               count_column_name: str = None) -> pd.DataFrame:
     """Convert the points with designated Uber H3 ids to hexbins with counts.
     :param df: Pandas DataFrame with H3 ids in a designated column.
     :param h3_id: Column containing the Uber H3 id for each point.
+    :param count_column_name: New column name, which will contain the new summarized values.
     :return: Pandas Spatially Enabled Dataframe of hexagon polygons and point counts.
     """
+    # provide default
+    count_column_name = 'count' if count_column_name is None else count_column_name
+
     # get the count for each hex id
     h3_id_cnt = df[h3_id_col].value_counts()
-    h3_id_cnt.name = 'count'
+    h3_id_cnt.name = count_column_name
 
     # get the geometries for all the count hex ids
     hex_df = get_h3_hex_dataframe_from_h3_id_lst(h3_id_cnt.index)
@@ -283,28 +295,33 @@ def get_h3_hexbins_with_counts(df: pd.DataFrame, h3_id_col: str = 'h3_id') -> pd
     return out_df
 
 
-def get_nonoverlapping_h3_hexbins_for_points(sdf: pd.DataFrame, h3_min: int = 5, h3_max: int = 9,
-                                             min_count: int = 100) -> pd.DataFrame:
+def get_nonoverlapping_h3_hexbins_for_points(spatially_enabled_dataframe: pd.DataFrame, h3_minimum: int = 5,
+                                             h3_maximum: int = 9,minimum_threshold_value: int = 100,
+                                             weighting_column: str = None) -> pd.DataFrame:
     """Get points summarized by non-overlapping Uber H3 hexbins at mulitiple resolution levels while
     ensuring the minimum count of points is retained in each hexbin. If enough points are not members
     of the lowest level of resolution, this function will continue to aggregate up to the next larger
     hexbin resolution until the largest area (smaller number) is reached. Hexbin areas still without
     enough points to meet the minimum threshold will not be represented.
-    :param df: Spatially Enabled DataFrame with point geometries to be aggregated.
-    :param h3_max: Integer maximum H3 grid level defining the samllest geographic hex area - must be larger than the minimum.
-    :param h3_min: Integer minimum H3 grid level defining the largest geograhpic hex area - must be smaller than the maximum.
-    :param min_count: Minimum point count for a grid.
+    :param spatially_enabled_dataframe: Spatially Enabled DataFrame with point geometries to be aggregated.
+    :param h3_maximum: Integer maximum H3 grid level defining the samllest geographic hex area - must be larger than the
+        minimum.
+    :param h3_minimum: Integer minimum H3 grid level defining the largest geograhpic hex area - must be smaller than the
+        maximum.
+    :param minimum_threshold_value: Minimum count for a grid.
+    :param weighting_column: Column from input data to use for point weighting.
+    :return: Pandas Spatially Enabled DataFrame
     """
     # add h3 ids
-    df = add_h3_ids_to_points(sdf, h3_max, h3_min)
+    df = add_h3_ids_to_points(spatially_enabled_dataframe, h3_maximum, h3_minimum)
 
     # assign h3 grid based on count, and drop those blow the threshold
-    cnt_df = get_h3_ids_by_point_count(df, min_count)
+    cnt_df = get_h3_ids_by_count(df, minimum_threshold_value, count_column=weighting_column)
 
     # roll up smaller grid id assignments to larger parent hexbins
     cln_cnt_df = remove_overlapping_h3_ids(cnt_df)
 
     # convert to geometry with count
-    out_df = get_h3_hexbins_with_counts(cln_cnt_df)
+    out_df = get_h3_hexbins_with_counts(cln_cnt_df, count_column_name=weighting_column)
 
     return out_df
