@@ -3,10 +3,9 @@ name: h3-py
 channels:
   - esri
   - conda-forge
-  - defaults
 
 dependencies:
-  - arcgis=1.7.1
+  - arcgis=1.8.1
   - cookiecutter  
   - dask
   - h3-py

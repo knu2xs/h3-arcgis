@@ -48,7 +48,8 @@ def get_unique_h3_ids_for_aoi(orig_df: pd.DataFrame, hex_level: int = 9) -> list
     """
     Given an area of interest, create Uber H3 hexagons covering the area of interest.
     :param orig_df: Spatially enabled dataframe delineating the area of interest.
-    :returns: List of unique Uber H3 indicies whose centroids fall within the area of interest.
+    :param hex_level: Integer indicating the desired H3 level defining output hexagon tessellation resolution.
+    :returns: List of unique Uber H3 indices whose centroids fall within the area of interest.
     """
     # explode all the multipart geometric features into discrete geometric features
     expl_df = _preprocess_sdf_for_h3(orig_df)
@@ -86,7 +87,7 @@ def get_unique_h3_ids_for_aoi(orig_df: pd.DataFrame, hex_level: int = 9) -> list
 def get_esri_geometry_for_h3_id(h3_id: str) -> Polygon:
     """
     Convert an Uber H3 id to an ArcGIS Python API Polygon Geometry object.
-    :param h3_id:String Uber H3 id.
+    :param h3_id: String Uber H3 id.
     :return: ArcGIS Python API Polygon Geometry object
     """
     # get a list of coordinate rings for the hex id's
@@ -97,10 +98,27 @@ def get_esri_geometry_for_h3_id(h3_id: str) -> Polygon:
                      'spatialReference': {'wkid': 4326, 'latestWkid': 4326}})
 
 
+def get_h3_spatially_enabled_dataframe(df: pd.DataFrame, h3_address_column: str) -> pd.DataFrame:
+    """
+    Create a spatially enabled dataframe with geometry created from the h3 addresses in a column.
+    :param df: Pandas dataframe.
+    :param h3_address_column: Column to be used for calculating the h3 geometry.
+    :return: Spatialy enabled dataframe.
+    """
+    if df[h3_address_column].isnull().any():
+        raise Exception(f'There appear to be missing values in the specified H3 column, {h3_address_column}.')
+
+    df['SHAPE'] = df[h3_address_column].swifter.apply(lambda h3_id: get_esri_geometry_for_h3_id(h3_id))
+    df.spatial.set_geometry('SHAPE')
+
+    return df
+
+
+
 def get_h3_hex_dataframe_from_h3_id_lst(h3_id_lst: list) -> pd.DataFrame:
     """
     From a list of H3 id's, return a spatially enabled dataframe with all the geometries.
-    :param h3_id_lst: STring list of H3 identifiers.
+    :param h3_id_lst: String list of H3 identifiers.
     :return: Spatially enabled dataframe of hexagons.
     """
     # create a list of geometries corresponding to the hex id's
@@ -153,7 +171,7 @@ def _get_h3_range_lst_from_df(df):
 
 
 def add_h3_ids_to_points(df: pd.DataFrame, h3_max: int, h3_min: int) -> pd.DataFrame:
-    """Add Uber H3 ids to the point geometries in a Saptailly Enabled DataFrame.
+    """Add Uber H3 ids to the point geometries in a Spatially Enabled DataFrame.
     :param df: Spatially Enabled DataFrame with point geometries to be aggregated.
     :param h3_max: Integer maximum H3 grid level defining the samllest geographic hex area - must be larger than the minimum.
     :param h3_min: Integer minimum H3 grid level defining the largest geograhpic hex area - must be smaller than the maximum.

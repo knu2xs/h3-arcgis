@@ -74,9 +74,17 @@ class CreateH3Tessellation(object):
 
     def execute(self, parameters, messages):
         """The source code of the tool."""
-        in_aoi = parameters[0]
-        h3_lvl = parameters[1]
-        out_fc = parameters[2]
+        in_aoi = parameters[0].valueAsText
+        h3_lvl = parameters[1].value
+        out_fc = parameters[2].valueAsText
+
+        # Ensure single part geometry by dissolving into single feature with single geometry since H3 cannot handle
+        # multipart geometries. Consolidating into single feature is additional beneficial byproduct.
+        in_aoi = arcpy.management.Dissolve(
+            in_features=in_aoi,
+            out_feature_class='memory/h3_aoi',
+            multi_part=False
+        )[0]
 
         in_df = GeoAccessor.from_featureclass(in_aoi)
         out_df =h3_arcgis.get_h3_hex_for_aoi(orig_df=in_df, hex_level=h3_lvl)

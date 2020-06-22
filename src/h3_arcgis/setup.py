@@ -8,14 +8,14 @@ setuptools.setup(
     version='0.1.0',
     author='Joel McCune',
     author_email='knu2xs@gmail.com',
-    description='Useful tools for working with Uber H3 library and ArcGIS.',
+    description='Useful tools for working with Uber H3 in ArcGIS.',
     license='Apache 2.0',
     long_description=long_description,
     long_description_content_type='text/markdown',
-    url='https://github.com/knu2xs/ba-tools',
+    url='https://github.com/knu2xs/h3-arcgis',
     packages=['ba_tools'],
     install_requires=[
-        'arcgis>=1.7.0',
+        'arcgis>=1.8.0',
         'h3-py',
         'dask',
         'swifter'
