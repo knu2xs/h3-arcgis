@@ -5,9 +5,8 @@
 #################################################################################
 
 PROJECT_DIR := $(shell dirname $(realpath $(lastword $(MAKEFILE_LIST))))
-PROJECT_NAME = h3-py
-ENV_NAME = h3-py
-CONDA_PARENT = arcgispro-py3
+PROJECT_NAME = h3-arcgis
+ENV_NAME = h3-arcgis
 
 #################################################################################
 # COMMANDS                                                                      #
@@ -15,7 +14,7 @@ CONDA_PARENT = arcgispro-py3
 
 ## Make Dataset
 data:
-	. activate $(ENV_NAME)
+	conda activate $(ENV_NAME)
 	python src/data/make_dataset.py
 	@echo ">>> Data processed."
 
@@ -24,32 +23,41 @@ clean:
 	find . -type f -name "*.py[co]" -delete
 	find . -type d -name "__pycache__" -delete
 
-## Create the local environment by cloning the parent environment
-env_create:
-	conda create --name $(ENV_NAME) --clone $(CONDA_PARENT)
-	@echo ">>> New conda environment, $(ENV_NAME), created. Activate with:\n- source activate $(ENV_NAME)\n- make env_activate"
-
-## Export the current environment
-env_export:
-	conda env export --name $(ENV_NAME) > environment.yml
-	@echo ">>> $(PROJECT_NAME) conda environment exported to ./environment.yml"
-
 ## Build the local environment from the environment file
-env_build:
-	conda env create -f environment.yml
+env:
+	conda env create -f environment_dev_nix.yml
+	conda run -n $(PROJECT_NAME) python -m pip install -e .
+	@echo ">>> New conda environment, $(ENV_NAME), created. Activate with:\n- conda activate $(ENV_NAME)"
 
+# If working in an EC2 environment, set everything up - BETA FEATURE
+ec2:
+
+	# get install and configure miniconda
+	wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/miniconda.sh
+	~/miniconda.sh -b -p $(HOME)/miniconda
+	~/miniconda/bin/conda init
+	sed -i '1 i\export PATH=/home/ubuntu/miniconda/bin:$PATH' ~/.bashrc
+
+	# create and activate the project conda environment
+	~/miniconda/bin/conda env create -f ./environment.yml
+	~/miniconda/bin/conda activate $(ENV_NAME)
+
+	# install the local package
+	python -m pip install -e .
+
+	# configure jupyter for remote access with password "jovyan"
+	jupyter notebook --generate-config
+	sed -i '1 i\c.NotebookApp.port = 8888' ~/.jupyter/jupyter_notebook_config.py
+	sed -i '1 i\c.NotebookApp.password = u"sha1:b37cb398255d:3f676cfe9b00e0c485385b435584ae5518bd14a4"' ~/.jupyter/jupyter_notebook_config.py
+	sed -i '1 i\c.NotebookApp.ip = "0.0.0.0"' ~/.jupyter/jupyter_notebook_config.py
+
+# create a new kernel
 create_kernel:
-	python -m ipykernel install --user --name $(ENV_NAME) --display-name "$(PROJECT_NAME)"
-
-## Activate the environment - doesn't work, so commented out
-# env_activate:
-# 	. activate $(PROJECT_NAME)
-# 	@echo ">>> $(PROJECT_NAME) conda environment activated."
+	conda run -n $(ENV_NAME) python -m ipykernel install --user --name $(ENV_NAME) --display-name "$(PROJECT_NAME)"
 
 ## Run all tests in module
 test:
-	. activate $(ENV_NAME)
-	pytest
+	conda run -n $(ENV_NAME) python -m pytest
 
 #################################################################################
 # PROJECT RULES                                                                 #

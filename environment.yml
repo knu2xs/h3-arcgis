@@ -1,30 +1,29 @@
-name: h3-py
+name: h3-arcgis
 
 channels:
   - esri
   - conda-forge
 
 dependencies:
-  - arcgis=1.8.1
-  - cookiecutter  
+  - esri::arcgis
   - dask
+  - fiona
   - h3-py
-  - mkdocs
+  - jupyterlab
+  - munch
   - nodejs
   - pip
-  - pytest
+  - esri::pyarrow
+  - python=3.7
   - python-dotenv
+  - pyyaml
   - scipy
   - scikit-learn
   - seaborn
   - shapely
   - swifter
-  - tqdm
+  - tabulate
   - pip:
     - azure-storage-blob
-    - ipykernel
-    - sphinx
-    - sphinx-autodoc-typehints
-    - sphinx_rtd_theme
-
-  
+    - boto3
+    - placekey

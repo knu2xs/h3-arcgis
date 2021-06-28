@@ -25,9 +25,9 @@
 
 SETLOCAL
 SET PROJECT_DIR=%cd%
-SET PROJECT_NAME=h3-py
-SET ENV_NAME=h3-py
-SET CONDA_PARENT=arcgispro-py3
+SET PROJECT_NAME=h3-arcgis
+SET SUPPORT_LIBRARY = h3_arcgis
+SET ENV_NAME=h3-arcgis
 
 :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 :: COMMANDS                                                                     :
@@ -40,52 +40,49 @@ GOTO %1
 :data
     ENDLOCAL & (
         CALL activate "%ENV_NAME%"
-        CALL python scripts/make_data.py
+        CALL python src/make_data.py
         ECHO ^>^>^> Data processed.
     )
     EXIT /B
 
-:: Get data from Azure Blob Storage
-:get_data
+:: Make documentation using Sphinx!
+:docs
     ENDLOCAL & (
-        IF "%2"=="-o" CALL python scripts/azure_blob.py get "%PROJECT_DIR%" -o
-        IF "%2"=="" CALL python scripts/azure_blob.py get "%PROJECT_DIR%"
+        CALL docsrc/make.bat github
     )
-    EXIT /B
+	EXIT /B
 
-:: Push data to Azure Blob Storage
-:push_data
-    ENDLOCAL & (
-        IF "%2"=="-o" CALL python scripts/azure_blob.py push "%PROJECT_DIR%" -o
-        IF "%2"=="" CALL python scripts/azure_blob.py push "%PROJECT_DIR%"
-    )
-    EXIT /B
-	
-:: Export the current environment
-:env_export
-    ENDLOCAL & (
-        CALL conda env export --name "%ENV_NAME%" > environment.yml
-        ECHO ^>^>^> "%PROJECT_NAME%" conda environment exported to ./environment.yml
-    )
-    EXIT /B
-	
 :: Build the local environment from the environment file
 :env
     ENDLOCAL & (
 
-        :: Run this from the ArcGIS Python Command Prompt
-        :: Clone and activate the new environment
-        CALL conda create --name "%ENV_NAME%" --clone "%CONDA_PARENT%"
+        :: Create new environment from environment file
+        CALL conda env create -f environment_dev.yml
 
-        :: Install additional packages
-        CALL conda install nodejs --name "h3-py" -y
-        CALL conda env update --name "h3-py" --file environment.yml
+        :: Install the local package in development (experimental) mode
+        CALL python -m pip install -e .
 
+        :: Activate the enironment so you can get to work
         CALL activate "%ENV_NAME%"
 
-        :: Additional steps for the map widget to work in Jupyter Lab
-        CALL jupyter labextension install @jupyter-widgets/jupyterlab-manager -y
-        CALL jupyter labextension install arcgis-map-ipywidget@1.8.1 -y
+    )
+    EXIT /B
+
+:: If pre ArcGIS Pro 2.7
+:env_clone
+    ENDLOCAL & (
+
+        :: Clone the main arcgispro-py3 environment
+        CALL conda create --name "%ENV_NAME%" --clone arcgispro-py3
+
+        :: Create new environment from environment file
+        CALL conda env update -e "%ENV_NAME%" -f environment.yml
+
+        :: Install the local package in development (experimental) mode
+        CALL python -m pip install -e .
+
+        :: Activate teh environment so you can get to work
+        CALL activate "%ENV_NAME%"
     )
     EXIT /B
 
@@ -97,16 +94,43 @@ GOTO %1
 :: Remove the environment
 :env_remove
 	ENDLOCAL & (
-		CALL deactivate
+		CALL conda deactivate
 		CALL conda env remove --name "%ENV_NAME%" -y
 	)
 	EXIT /B
+
+:: Make the package for uploading
+:build
+    ENDLOCAL & (
+
+        :: Build the pip package
+        CALL python setup.py sdist
+
+        :: Build conda package
+        CALL conda build ./conda-recipe --output-folder ./conda-recipe/conda-build
+
+    )
+    EXIT /B
+
+:build_upload
+    ENDLOCAL & (
+
+        :: Build the pip package
+        CALL python setup.py sdist bdist_wheel
+        CALL twine upload ./dist/*
+
+        :: Build conda package
+        CALL conda build ./conda-recipe --output-folder ./conda-recipe/conda-build
+        CALL anaconda upload ./conda-recipe/conda-build/win-64/h3-arcgis*.tar.bz2
+
+    )
+    EXIT /B
 
 :: Run all tests in module
 :test
 	ENDLOCAL & (
 		activate "%ENV_NAME%"
-		pytest
+		pytest testing/
 	)
 	EXIT /B
 
